@@ -10,6 +10,7 @@ const writeOptions = Object.freeze({encoding: 'utf8', flag: 'wx'});
 /**
  * @param {!Array<string>|!Promise<!Array<string>>} all files to match
  * @param {{base: string|undefined}=}
+ * @return {!stream.Readable}
  */
 export function src(all, options={}) {
   const generate = async function *() {
@@ -30,9 +31,7 @@ export function src(all, options={}) {
       yield f;
     }
   };
-  const ss = stream.Readable.from(generate());
-  ss.__magic = all;
-  return ss;
+  return stream.Readable.from(generate());
 }
 
 
@@ -149,6 +148,16 @@ export class File {
 
 
 /**
+ * @typedef {{
+ *   clear?: boolean,
+ *   loader?: function(string): any,
+ *   validate?: function(string): string|undefined,
+ * }}
+ */
+var AssemblerOptions;
+
+
+/**
  * Assembles filesystem output into a shared root.
  *
  * Disallows duplicate file output, and provides a shared Promise for completion.
@@ -157,15 +166,23 @@ export class Assembler {
   #root;
   #prework;
   #work = [];
-  #streamRoot;
   #activeWork = 0;
+  #loader;
+  #validate;
 
   /**
    * @param {string} root to root output to, not normalized
-   * @param {{clear: boolean|undefined}=} options
+   * @param {AssemblerOptions=} options
    */
   constructor(root, options={}) {
-    options = Object.assign({clear: false}, options);
+    options = Object.assign({
+      clear: false,
+      loader: () => undefined,
+      validate: () => undefined,
+    }, options);
+
+    this.#loader = options.loader;
+    this.#validate = options.validate;
 
     if (process.version < 'v12') {
       throw new Error(`Assembler requires Node v12+`);
@@ -175,13 +192,8 @@ export class Assembler {
     // of Node v13+, 'unpipe' is emitted when the pipe is finished (without explicitly calling
     // `.unpipe()`), so we can resolve it then.
 
-    // FIXME: Node doesn't like sharing pipe targets. Once one pipe closes, the others seem to also
-    // close.
-
     this.#root = root;
     this.#prework = this.constructor._prework(root, options);
-
-    this.#streamRoot = this.dest('.');
   }
 
   static async _prework(root, options) {
@@ -198,11 +210,12 @@ export class Assembler {
    * Returns a stream.Writable where {@link File} instances can be passed.
    *
    * @param {string=} to write to inside of dest
+   * @param {{emitError: boolean}=} options whether to emit an error (true default)
    * @return {!stream.Writable}
    */
-  dest(to = '.') {
+  dest(to = '.', options) {
+    options = Object.assign({emitError: true}, options);
     const outer = this;
-    to = this.target(to);
 
     return new class extends stream.Writable {
       constructor() {
@@ -210,7 +223,7 @@ export class Assembler {
 
         const endHandlers = new Map();
 
-        this.on('pipe', (src) => {
+        this.on('pipe', (src, ...arg) => {
           const p = new Promise((resolve, reject) => {
             const r = resolve;
             resolve = (arg) => r(arg || 'default');
@@ -236,28 +249,29 @@ export class Assembler {
         if (chunk) {
           throw new Error(`unsupported .end(chunk) for dest stream`);
         }
-        // We overwrite this to not close this Writable.
+        // We close this writable (unfortunately).
+        // TODO(samthor): We'd like not to, so that stream destinations can be reused, but this
+        // breaks a bunch of built-in Node stuff.
+        super.end();
         callback && this.on('finish', callback);
         return this;
       }
 
       _writev(chunks, callback) {
-        // Kick off all writes, but don't wait for them to complete.
-        for (const {chunk} of chunks) {
+        const work = chunks.map(({chunk}) => {
           if (!(chunk instanceof File)) {
             throw new TypeError(`got non-File: ${chunk}`);
           }
           const target = path.join(to, chunk.path);
-          outer.write(target, chunk);
-        }
-
-        callback();
+          return outer.write(target, chunk.contents);
+        });
+        Promise.all(work).then(() => callback()).catch((err) => {
+          if (options.emitError) {
+            callback(err)
+          }
+        });
       }
     };
-  }
-
-  get root() {
-    return this.#streamRoot;
   }
 
   /**
@@ -268,6 +282,11 @@ export class Assembler {
    */
   target(dest) {
     dest = path.normalize(dest);
+    dest = this.#validate(dest) ?? dest;
+    if (dest instanceof Promise) {
+      throw new Error(`validate option cannot return Promise`);
+    }
+
     const out = path.join(this.#root, dest);
 
     if (out === this.#root || out.startsWith(this.#root + path.sep)) {
@@ -301,12 +320,17 @@ export class Assembler {
     return this._work(async () => {
       const dest = this.target(await maybePromiseDest);
 
-      const unknown = await raw;
+      let unknown = await raw;
 
       await fs.mkdir(path.dirname(dest), {recursive: true});
 
       if (!(unknown instanceof stream.Stream)) {
         let data;
+
+        if (unknown == null) {
+          const rel = path.relative(this.#root, dest);
+          unknown = await this.#loader(rel);
+        }
 
         // This ensures we support Buffer, string, or object-like JSON.
         if (unknown instanceof Buffer || typeof unknown === 'string') {
@@ -395,6 +419,10 @@ export class Assembler {
       if (!Array.isArray(src)) {
         src = [src];
       }
+
+      // Allow duplicates within a single call.
+      const srcSet = new Set(src);
+      src = [...srcSet];
 
       // Otherwise, copy everything from the src to the target dir.
       const copies = src.map(async (p) => {
