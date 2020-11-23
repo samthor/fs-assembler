@@ -153,7 +153,7 @@ export class File {
  *
  * Disallows duplicate file output, and provides a shared Promise for completion.
  */
-export default class Assembler {
+export class Assembler {
   #root;
   #prework;
   #work = [];
@@ -202,7 +202,7 @@ export default class Assembler {
    */
   dest(to = '.') {
     const outer = this;
-    to = this.target(dest);
+    to = this.target(to);
 
     return new class extends stream.Writable {
       constructor() {
