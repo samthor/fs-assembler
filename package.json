@@ -1,0 +1,9 @@
+{
+  "name": "fs-assembler",
+  "version": "1.0.0",
+  "description": "Assembles filesystem output into a shared root.",
+  "main": "assembler.js",
+  "author": "Sam Thorogood <sam.thorogood@gmail.com>",
+  "license": "Apache-2.0",
+  "type": "module"
+}
