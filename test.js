@@ -55,6 +55,10 @@ test('validate', async (t) => {
   await t.throwsAsync(a.write('x'), undefined, 'should not write');
   await a.write('y', 'should write');
   checkFile(t, 'test/validate/x', 'should write');
+
+  await a.write(['a', 'b'], 'foo');
+  checkFile(t, 'test/validate/a', 'foo');
+  checkFile(t, 'test/validate/b', 'foo');
 });
 
 test('loader', async (t) => {

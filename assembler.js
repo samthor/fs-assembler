@@ -318,7 +318,11 @@ export class Assembler {
     }
 
     return this._work(async () => {
-      const dest = this.target(await maybePromiseDest);
+      const maybeDest = await maybePromiseDest;
+      if (Array.isArray(maybeDest)) {
+        return Promise.all(maybeDest.map((dest) => this.write(dest, raw)));
+      }
+      const dest = this.target(maybePromiseDest);
 
       let unknown = await raw;
 
