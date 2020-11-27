@@ -1,6 +1,6 @@
 {
   "name": "fs-assembler",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Assembles filesystem output into a shared root.",
   "main": "assembler.js",
   "exports": {
