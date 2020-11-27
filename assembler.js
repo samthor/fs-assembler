@@ -192,7 +192,7 @@ export class Assembler {
     // of Node v13+, 'unpipe' is emitted when the pipe is finished (without explicitly calling
     // `.unpipe()`), so we can resolve it then.
 
-    this.#root = root;
+    this.#root = path.join(root, path.sep);  // ensure we end with '/'
     this.#prework = this.constructor._prework(root, options);
   }
 
@@ -200,6 +200,7 @@ export class Assembler {
     if (options.clear) {
       await fs.rmdir(root, {recursive: true});
     }
+    await fs.mkdir(root, {recursive: true});
   }
 
   get prework() {
@@ -289,7 +290,7 @@ export class Assembler {
 
     const out = path.join(this.#root, dest);
 
-    if (out === this.#root || out.startsWith(this.#root + path.sep)) {
+    if (out.startsWith(this.#root)) {
       return out;
     }
     throw new Error(`can't write outside root: ${dest}`);

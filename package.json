@@ -3,14 +3,20 @@
   "version": "0.1.1",
   "description": "Assembles filesystem output into a shared root.",
   "main": "assembler.js",
+  "exports": {
+    "import": "./assembler.js",
+    "require": "./assembler.cjs"
+  },
   "author": "Sam Thorogood <sam.thorogood@gmail.com>",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "test": "node test.js"
+    "test": "ava",
+    "prepublishOnly": "rollup --format=cjs assembler.js > assembler.cjs"
   },
   "devDependencies": {
     "ava": "^3.13.0",
-    "fast-glob": "^3.2.4"
+    "fast-glob": "^3.2.4",
+    "rollup": "^2.33.3"
   }
 }

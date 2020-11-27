@@ -1,3 +1,4 @@
+*.cjs
 .DS_Store
 node_modules/
 test/
